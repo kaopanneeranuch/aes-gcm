@@ -1,6 +1,0 @@
-{
-    "nrf-connect.applications": [
-        "${workspaceFolder}/demo"
-    ],
-    "cmake.sourceDirectory": "/home/student/aes-gcm/demo"
-}

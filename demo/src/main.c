@@ -1,45 +1,60 @@
-#include <zephyr/kernel.h>
-#include <zephyr/sys/printk.h>
+#include <mbedtls/gcm.h>
+#include <stdio.h>
 #include <string.h>
-
-#include <wolfssl/wolfcrypt/settings.h>
-#include <wolfssl/wolfcrypt/aes.h>
 
 int main(void)
 {
-    Aes aes;
-    unsigned char key[32];       /* 256-bit key */
-    unsigned char iv[12];        /* 96-bit IV */
-    unsigned char plaintext[64];
-    unsigned char ciphertext[64];
-    unsigned char authTag[16];
+    mbedtls_gcm_context gcm;
+    unsigned char key[16] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                             0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
+    unsigned char nonce[12] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                               0x00, 0x00, 0x00, 0x00};
+    unsigned char plaintext[] = "Hello, AES-GCM!";
+    unsigned char ciphertext[32];
+    unsigned char tag[16];
+    unsigned char decrypted[32];
     int ret;
 
-    memset(key, 0x01, sizeof(key));
-    memset(iv, 0x02, sizeof(iv));
-    memset(plaintext, 0x03, sizeof(plaintext));
+    printf("AES-GCM Encryption/Decryption Demo\n");
 
-    ret = wc_AesInit(&aes, NULL, INVALID_DEVID);
+    // Initialize GCM context
+    mbedtls_gcm_init(&gcm);
+
+    // Set encryption key (128-bit)
+    ret = mbedtls_gcm_setkey(&gcm, MBEDTLS_CIPHER_ID_AES, key, 128);
     if (ret != 0) {
-        printk("wc_AesInit failed: %d\n", ret);
-        return ret;
+        printf("Failed to set GCM key: %d\n", ret);
+        return -1;
     }
 
-    ret = wc_AesGcmSetKey(&aes, key, sizeof(key));
+    // Encrypt
+    ret = mbedtls_gcm_crypt_and_tag(&gcm, MBEDTLS_GCM_ENCRYPT, 
+                                      strlen((char *)plaintext), nonce, 12,
+                                      NULL, 0, plaintext, ciphertext, 16, tag);
     if (ret != 0) {
-        printk("wc_AesGcmSetKey failed: %d\n", ret);
-        wc_AesFree(&aes);
-        return ret;
+        printf("Encryption failed: %d\n", ret);
+        return -1;
     }
 
-    ret = wc_AesGcmEncrypt(&aes, ciphertext, plaintext, sizeof(plaintext),
-                           iv, sizeof(iv), authTag, sizeof(authTag), NULL, 0);
+    printf("Plaintext:  %s\n", plaintext);
+    printf("Ciphertext: ");
+    for (int i = 0; i < strlen((char *)plaintext); i++)
+        printf("%02x", ciphertext[i]);
+    printf("\n");
+
+    // Decrypt and verify tag
+    ret = mbedtls_gcm_auth_decrypt(&gcm,
+                                    strlen((char *)plaintext), nonce, 12,
+                                    NULL, 0, tag, 16,
+                                    ciphertext, decrypted);
     if (ret != 0) {
-        printk("wc_AesGcmEncrypt failed: %d\n", ret);
-    } else {
-        printk("AES-GCM encryption succeeded!\n");
+        printf("Decryption/verification failed: %d\n", ret);
+        return -1;
     }
 
-    wc_AesFree(&aes);
+    decrypted[strlen((char *)plaintext)] = '\0';
+    printf("Decrypted:  %s\n", decrypted);
+
+    mbedtls_gcm_free(&gcm);
     return 0;
 }
